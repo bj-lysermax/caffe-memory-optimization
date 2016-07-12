@@ -427,11 +427,12 @@ int Net<Dtype>::AppendBottom(const NetParameter& param, const int layer_id,
   bottom_vecs_[layer_id].push_back(blobs_[blob_id].get());
   bottom_id_vecs_[layer_id].push_back(blob_id);
   available_blobs->erase(blob_name);
-  bool need_backward = blob_need_backward_[blob_id];
+  bool propagate_down = true;
   // Check if the backpropagation on bottom_id should be skipped
-  if (layer_param.propagate_down_size() > 0) {
-    need_backward = layer_param.propagate_down(bottom_id);
-  }
+  if (layer_param.propagate_down_size() > 0)
+    propagate_down = layer_param.propagate_down(bottom_id);
+  const bool need_backward = blob_need_backward_[blob_id] &&
+                          propagate_down;
   bottom_need_backward_[layer_id].push_back(need_backward);
   return blob_id;
 }
@@ -538,19 +539,7 @@ Dtype Net<Dtype>::ForwardFromTo(int start, int end) {
   Dtype loss = 0;
   for (int i = start; i <= end; ++i) {
     // LOG(ERROR) << "Forwarding " << layer_names_[i];
-    
-	// MEMOPT
-	string layer_type = layers_[i]->type();
-	if(layer_type == "Convolution" || 
-	   layer_type == "InnerProduct" ||
-	   layer_type == "Pooling"){
-		   for(int j = 0; j < top_vecs_[i].size(); ++j){
-			   top_vecs_[i][j]->realloc_diff();
-		   }
-	   }
-	// end of MEMOPT
-	
-	Dtype layer_loss = layers_[i]->Forward(bottom_vecs_[i], top_vecs_[i]);
+    Dtype layer_loss = layers_[i]->Forward(bottom_vecs_[i], top_vecs_[i]);
     loss += layer_loss;
     if (debug_info_) { ForwardDebugInfo(i); }
   }
@@ -595,20 +584,40 @@ void Net<Dtype>::BackwardFromTo(int start, int end) {
   CHECK_LT(start, layers_.size());
   for (int i = start; i >= end; --i) {
     if (layer_need_backward_[i]) {
-      layers_[i]->Backward(top_vecs_[i], bottom_need_backward_[i], bottom_vecs_[i]);
-	  
-	  // MEMOPT
-	  if(i != start && (
-	     layer_type == "Convolution" ||
-		 layer_type == "InnerProduct" ||
-		 layer_type == "Pooling")
-		){
-		  for(int j = 0; j < top_vecs_[i].size(); ++j){
-			top_vecs_[i][j]->reset_diff();
-		  }			
-		}
-	  // end of MEMOPT
-	  
+      // MEMOPT
+      if( i != end && top_vecs_[i] != bottom_vecs_[i]){
+    		for(int j = 0; j < bottom_vecs_[i].size(); ++j){
+    		  // for layers that have multiple tops, 
+    		  // bottom vecs should be reallocated only once
+    		  if (!bottom_vecs_[i][j]->check_diff()){ 
+    				bottom_vecs_[i][j]->realloc_diff();
+    			}
+  			}
+  		}
+
+      layers_[i]->Backward(
+          top_vecs_[i], bottom_need_backward_[i], bottom_vecs_[i]);
+
+      if( i != start && top_vecs_[i] != bottom_vecs_[i]){
+				bool not_use = true;
+				for (int j=i-1; j>= end; --j) { 
+					// for layers that have multiple bottoms, 
+					// top vecs should be reset only once when not use any more
+					if (top_vecs_[j] == top_vecs_[i]) {
+						not_use = false;
+						break ;
+					}
+				}
+				if (not_use) {
+          for(int j = 0; j < top_vecs_[i].size(); ++j){
+						if (!layers_[i]->loss(j)) {
+            	top_vecs_[i][j]->reset_diff();
+						}
+					}
+				}
+      }
+      // END OF MEMOPT
+      
       if (debug_info_) { BackwardDebugInfo(i); }
     }
   }
@@ -1012,3 +1021,4 @@ const shared_ptr<Layer<Dtype> > Net<Dtype>::layer_by_name(
 INSTANTIATE_CLASS(Net);
 
 }  // namespace caffe
+
