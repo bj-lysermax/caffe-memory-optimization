@@ -30,9 +30,7 @@ void Blob<Dtype>::Reshape(const vector<int>& shape) {
   int* shape_data = static_cast<int*>(shape_data_->mutable_cpu_data());
   for (int i = 0; i < shape.size(); ++i) {
     CHECK_GE(shape[i], 0);
-    if (count_ != 0) {
-      CHECK_LE(shape[i], INT_MAX / count_) << "blob size exceeds INT_MAX";
-    }
+    CHECK_LE(shape[i], INT_MAX / count_) << "blob size exceeds INT_MAX";
     count_ *= shape[i];
     shape_[i] = shape[i];
     shape_data[i] = shape[i];
@@ -62,29 +60,39 @@ void Blob<Dtype>::ReshapeLike(const Blob<Dtype>& other) {
 // MEMOPT
 template <typename Dtype>
 void Blob<Dtype>::reset(){
-	reset_data();
-	reset_diff();
+    reset_data();
+    reset_diff();
 }
 template <typename Dtype>
 void Blob<Dtype>::reset_data(){
-	data_.reset();
+    data_.reset();
 }
 template <typename Dtype>
 void Blob<Dtype>::reset_diff(){
-	diff_.reset();
+    diff_.reset();
 }
 template <typename Dtype>
 void Blob<Dtype>::realloc(){
-	realloc_data();
-	realloc_diff();
+    realloc_data();
+    realloc_diff();
 }
 template <typename Dtype>
 void Blob<Dtype>::realloc_data(){
-	data_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
+    data_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
 }
 template <typename Dtype>
 void Blob<Dtype>::realloc_diff(){
-	diff_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
+    diff_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
+}
+
+template <typename Dtype>
+bool Blob<Dtype>::check_data(){
+    return data_;
+}
+
+template <typename Dtype>
+bool Blob<Dtype>::check_diff(){
+		return diff_;
 }
 // end of MEMOPT
 
