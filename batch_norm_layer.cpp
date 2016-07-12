@@ -66,18 +66,23 @@ void BatchNormLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       num_by_chans_.shape(0) != numbychans) {
     sz[0] = numbychans;
     num_by_chans_.Reshape(sz);
-	
-	// MEMOPT
-    num_by_chans_bak_.Reshape(sz);
-    
-	caffe_set(batch_sum_multiplier_.count(), Dtype(1),
+    caffe_set(batch_sum_multiplier_.count(), Dtype(1),
         batch_sum_multiplier_.mutable_cpu_data());
   }
+
+  // MEMOPT
+  num_by_chans_bak_.Reshape(sz);
+  // END OF MEMOPT
 }
 
 template <typename Dtype>
 void BatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
+  // MEMOPT
+  temp_.realloc();
+  x_norm_.realloc();
+  // END OF MEMOPT
+
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
   int num = bottom[0]->shape(0);
@@ -114,9 +119,6 @@ void BatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       spatial_dim, 1, -1, num_by_chans_.cpu_data(),
       spatial_sum_multiplier_.cpu_data(), 1., top_data);
 
-  // MEMOPT
-  temp_.realloc();
-	  
   if (!use_global_stats_) {
     // compute variance using var(X) = E((X-EX)^2)
     caffe_powx(top[0]->count(), top_data, Dtype(2),
@@ -156,21 +158,27 @@ void BatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   caffe_div(temp_.count(), top_data, temp_.cpu_data(), top_data);
   // TODO(cdoersch): The caching is only needed because later in-place layers
   //                 might clobber the data.  Can we skip this if they won't?
- 
+  caffe_copy(x_norm_.count(), top_data,
+      x_norm_.mutable_cpu_data());
+
   // MEMOPT
   temp_.reset();
-  x_norm_.realloc();
-
-  caffe_copy(x_norm_.count(), top_data, x_norm_.mutable_cpu_data());
-
-  // MEMOPT
-  caffe_copy(num_by_chans_.count(), num_by_chans_.cpu_data(), num_by_chans_bak_.mutable_cpu_data());
+  // END OF MEMOPT
 }
 
 template <typename Dtype>
 void BatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down,
     const vector<Blob<Dtype>*>& bottom) {
+  // MEMOPT
+  temp_.realloc();
+  int num = bottom[0]->shape()[0];
+  int spatial_dim = bottom[0]->count()/(bottom[0]->shape(0)*channels_);
+  caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, channels_ * num,
+      spatial_dim, 1, 1., num_by_chans_.cpu_data(),
+      spatial_sum_multiplier_.cpu_data(), 0., temp_.mutable_cpu_data());
+  // END OF MEMOPT
+
   const Dtype* top_diff;
   if (bottom[0] != top[0]) {
     top_diff = top[0]->cpu_diff();
@@ -179,24 +187,17 @@ void BatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     top_diff = x_norm_.cpu_diff();
   }
   Dtype* bottom_diff = bottom[0]->mutable_cpu_diff();
-  const Dtype* top_data = x_norm_.cpu_data();
-  int num = bottom[0]->shape()[0];
-  int spatial_dim = bottom[0]->count()/(bottom[0]->shape(0)*channels_);  
   if (use_global_stats_) {
-    // caffe_div(temp_.count(), top_diff, temp_.cpu_data(), bottom_diff);
-    
-	// MEMOPT
-    caffe_gpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, channels_ * num,
-      spatial_dim, 1, 1., num_by_chans_.cpu_data(),
-      spatial_sum_multiplier_.cpu_data(), 0., x_norm_.mutable_cpu_data());
+    caffe_div(temp_.count(), top_diff, temp_.cpu_data(), bottom_diff);
 
-    caffe_gpu_div(x_norm_.count(), top_diff, x_norm_.cpu_data(), bottom_diff);
-
-	// MEMOPT
+    // MEMOPT
+    temp_.reset();
     x_norm_.reset();
-	
-	return;
+    // END OF MEMOPT
+  
+    return;
   }
+  const Dtype* top_data = x_norm_.cpu_data();
   // if Y = (X-mean(X))/(sqrt(var(X)+eps)), then
   //
   // dE(Y)/dX =
@@ -251,22 +252,12 @@ void BatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
 
   // note: temp_ still contains sqrt(var(X)+eps), computed during the forward
   // pass.
-  
-  // caffe_div(temp_.count(), bottom_diff, temp_.cpu_data(), bottom_diff);
-  
-  // MEMOPT
-  x_norm_.reset();
-  temp_.realloc();
-
-  // MEMOPT
-  caffe_gpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, channels_ * num,
-      spatial_dim, 1, 1., num_by_chans_.cpu_data(),
-      spatial_sum_multiplier_.cpu_data(), 0., temp_.mutable_cpu_data());
- 
-  caffe_gpu_div(temp_.count(), bottom_diff, temp_.cpu_data(), bottom_diff);
+  caffe_div(temp_.count(), bottom_diff, temp_.cpu_data(), bottom_diff);
 
   // MEMOPT
   temp_.reset();
+  x_norm_.reset();
+  // END OF MEMOPT
 }
 
 
