@@ -61,6 +61,10 @@ class Blob {
   void realloc_data();
   void realloc_diff();
 
+	bool check_data();
+	bool check_diff();
+	// END OF MEMOPT
+
   
   inline string shape_string() const {
     ostringstream stream;
