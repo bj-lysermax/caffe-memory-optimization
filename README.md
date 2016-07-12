@@ -4,8 +4,9 @@ This is a revision and optimization of fengfu-chris's verson of caffe-memory-opt
 
 ===
 ### 0. Minor errors of fengfu-chris's verson of caffe-memory-optimization
-  net.cpp: In function BackwardFromTo, layer_type is not defined
-  batch_norm_layer.cu: In function Backward_gpu num_by_chans_bak_ is not needed, since num_by_chans_ is not revised after forward propagation
+  net.cpp: In function BackwardFromTo, layer_type is not defined 
+  
+  batch_norm_layer.cpp/batch_norm_layer.cu: In function Backward_cpu/Backward_gpu, num_by_chans_bak_ is not needed since num_by_chans_ is not revised after forward propagation
 
 ### 1. Backward memory optimization
   In the backward propagation of each layer, the mem of bottom_vecs is reallocate before real backward calculation. Then, the mem of top_vecs is reset after backward propagation.
