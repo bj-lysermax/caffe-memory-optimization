@@ -15,4 +15,4 @@ This is a revision and optimization of fengfu-chris's verson of caffe-memory-opt
    Mem of temporal variable is reallocate and reset in each forward and backward propagation
 
 ### 3. Performance
-   The peak mem cost of TrainNet after mem optimization is approximately 1/2.5 of original Caffe. But the time cost will go up to about 1.3 times of original Caffe.
+   The peak mem cost of TrainNet after mem optimization is approximately 1/3 of original Caffe. But, compared to original Caffe, the time cost will go up to about 1.3 times in single GPU mode and 2.5 times in multiple GPUs mode. 
